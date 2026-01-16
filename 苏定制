@@ -1,0 +1,222 @@
+-- 袁某人脚本 v1.0 优化版
+ -- 核心优化：提升稳定性、性能与可读性，强化容错机制
+ -- 安全加载核心UI（优化错误捕获与提示）
+ local success, WindUI = pcall(function()
+     return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
+ end)
+ if not success then
+     warn("[袁某人脚本] WindUI加载失败，请检查网络连接或链接有效性")
+     game.StarterGui:SetCore("SendNotification", {
+         Title = "加载错误",
+         Text = "无法加载核心UI组件，脚本终止运行",
+         Duration = 5
+     })
+     return
+ end
+ -- 全局配置（统一规范，提升扩展性）
+ local CONFIG = {
+     TRANSPARENCY = 0.2,
+     THEME = "Dark",
+     WINDOW_SIZE = UDim2.fromOffset(720, 540),
+     SIDEBAR_WIDTH = 240,
+     SUCCESS_COLOR = Color3.new(0, 0.8, 0),
+     WARNING_COLOR = Color3.new(1, 0.5, 0),
+     ERROR_COLOR = Color3.new(1, 0, 0),
+     GRADIENT_START = Color3.new(0.18, 0.41, 1),
+     GRADIENT_END = Color3.new(0.5, 0.7, 1)
+ }
+ -- 工具函数封装（独立模块，便于维护）
+ local Utils = {
+     -- 渐变文本生成（优化算法，提升性能）
+     gradientText = function(text, startColor, endColor)
+         if not text or #text == 0 then return "" end
+         local result = ""
+         local textLen = #text
+         for i = 1, textLen do
+             local t = textLen == 1 and 0 or (i - 1) / (textLen - 1)
+             local r = math.floor(math.clamp(startColor.R + (endColor.R - startColor.R) * t, 0, 1) * 255)
+             local g = math.floor(math.clamp(startColor.G + (endColor.G - startColor.G) * t, 0, 1) * 255)
+             local b = math.floor(math.clamp(startColor.B + (endColor.B - startColor.B) * t, 0, 1) * 255)
+             result = result .. string.format('<font color="rgb(%d,%d,%d)">%s</font>', r, g, b, text:sub(i, i))
+         end
+         return result
+     end,
+     -- 远程脚本加载（统一容错，规范日志）
+     loadRemoteScript = function(url, successMsg, failMsg)
+         local success, err = pcall(function()
+             local scriptCode = game:HttpGet(url)
+             loadstring(scriptCode)()
+         end)
+         if success then
+             WindUI:Notify({
+                 Title = "执行成功",
+                 Content = successMsg,
+                 Duration = 2,
+                 Color = CONFIG.SUCCESS_COLOR
+             })
+         else
+             WindUI:Notify({
+                 Title = "执行失败",
+                 Content = failMsg,
+                 Duration = 3,
+                 Color = CONFIG.ERROR_COLOR
+             })
+             warn(string.format("[袁某人脚本] 加载失败：%s，错误详情：%s", url, err))
+         end
+     end
+ }
+ -- 初始化UI配置
+ WindUI.TransparencyValue = CONFIG.TRANSPARENCY
+ WindUI:SetTheme(CONFIG.THEME)
+ -- 创建主窗口（优化结构，提升扩展性）
+ local MainWindow = WindUI:CreateWindow({
+     Title = Utils.gradientText("袁某人脚本", CONFIG.GRADIENT_START, CONFIG.GRADIENT_END),
+     Icon = "palette",
+     Author = "本脚本由袁某人独立完成",
+     Folder = "袁某人脚本/配置",
+     Size = CONFIG.WINDOW_SIZE,
+     Theme = CONFIG.THEME,
+     User = {
+         Enabled = true,
+         Callback = function()
+             WindUI:Notify({Title = "配置触发", Content = "用户配置回调已执行", Duration = 1.5})
+         end
+     },
+     SideBarWidth = CONFIG.SIDEBAR_WIDTH,
+     ScrollBarEnabled = true,
+     Resizable = true
+ })
+ -- 版本标签（优化视觉）
+ MainWindow:Tag({
+     Title = "v1.0 稳定版",
+     Color = Color3.fromHex("#306aff")
+ })
+ -- 公告标签页（优化排版，提升可读性）
+ local NoticeTab = MainWindow:Tab({
+     Title = "公告",
+     Icon = "app-window",
+     Locked = false,
+     OnCreate = function()
+         WindUI:Notify({Title = "加载成功", Content = "公告标签页已就绪", Duration = 1.5})
+     end
+ })
+ -- 快速复制功能
+ NoticeTab:Paragraph({
+     Title = "快速复制",
+     Image = nil,
+     ImageSize = 20,
+     Color = "Grey",
+     Buttons = {
+         {
+             Title = "复制标识",
+             Icon = "copy",
+             Variant = "Tertiary",
+             Callback = function()
+                 setclipboard("袁某人脚本v1.0")
+                 WindUI:Notify({
+                     Title = "复制成功",
+                     Content = "已复制脚本标识到剪贴板",
+                     Duration = 2
+                 })
+             end
+         }
+     }
+ })
+ -- 脚本简介（优化文本格式）
+ NoticeTab:Section({
+     Title = "脚本简介",
+     Text = string.format(
+         "欢迎使用袁某人脚本 v1.0\n\n核心功能：\n• 通缉系统\n• 自动刷钱\n\n使用须知：\n请遵守游戏规则，避免违规操作导致账号风险",
+         CONFIG.THEME
+     ),
+     TextXAlignment = "Left",
+     TextSize = 17,
+     Padding = 15
+ })
+ -- 通缉功能标签页（统一按钮样式，优化加载逻辑）
+ local WantedTab = MainWindow:Tab({
+     Title = "通缉功能",
+     Icon = "bird",
+     Locked = false,
+ })
+ -- 功能按钮配置（结构化管理，便于扩展）
+ local function createFunctionButton(tab, title, url, successMsg, failMsg)
+     tab:Button({
+         Title = title,
+         Locked = false,
+         Callback = function()
+             Utils.loadRemoteScript(url, successMsg, failMsg)
+         end
+     })
+ end
+ -- 注册功能按钮
+ createFunctionButton(
+     WantedTab,
+     "启动 TINEv1.5",
+     "https://raw.githubusercontent.com/jhvjjf555/-1.0/20ec7b03dda77cc369a4a2fc0c088ea4e7943ae5/%E8%8E%B7%E5%8F%96%E7%9A%84%E8%84%9A%E6%9C%AC_20260102_231858.lua",
+     "TINEv1.5 脚本已启动",
+     "加载/运行出错，请检查链接"
+ )
+ createFunctionButton(
+     WantedTab,
+     "启动自动刷钱",
+     "https://pastefy.app/LxpLejsi/raw",
+     "自动刷钱脚本已运行",
+     "刷钱脚本加载失败"
+ )
+ createFunctionButton(
+     WantedTab,
+     "KENNY 通缉换服",
+     "https://raw.githubusercontent.com/ke9460394-dot/ugik/refs/heads/main/KENNY通缉换服.lua",
+     "KENNY通缉换服已启动",
+     "加载/运行出错"
+ )
+ createFunctionButton(
+     WantedTab,
+     "老外脚本",
+     "https://raw.githubusercontent.com/Shine-MoonStar/Nexus/refs/heads/main/Wanted.lua",
+     "老外脚本已启动",
+     "老外脚本加载失败"
+ )
+ -- 废弃功能标签页（强化风险提示）
+ local AbandonedTab = MainWindow:Tab({
+     Title = "废弃功能",
+     Icon = "trash",
+     Locked = false,
+     OnCreate = function()
+         AbandonedTab:Paragraph({
+             Title = "⚠️ 高风险提示",
+             Text = "此标签页下的功能已废弃！\n存在严重兼容性问题和账号封禁风险，\n使用后一切后果自负！",
+             Color = "Red",
+             TextSize = 16,
+             Bold = true,
+             Padding = 20
+         })
+     end
+ })
+ -- 废弃功能按钮
+ AbandonedTab:Button({
+     Title = "运行 XK 废弃功能",
+     Locked = false,
+     Callback = function()
+         Utils.loadRemoteScript(
+             "https://raw.githubusercontent.com/DevSloPo/Main/refs/heads/main/Game/Forsaken",
+             "XK废弃功能已运行（风险警告）",
+             "XK功能加载/运行出错"
+         )
+         -- 额外风险提示
+         WindUI:Notify({
+             Title = "⚠️ 风险警告",
+             Content = "你已启用废弃功能，账号安全无法保障",
+             Duration = 4,
+             Color = CONFIG.WARNING_COLOR
+         })
+     end
+ })
+ -- 启动成功提示（优化视觉反馈）
+ WindUI:Notify({
+     Title = "🎉 启动成功",
+     Content = "袁某人脚本 v1.0 已全部加载完成\n祝使用愉快！",
+     Duration = 2.5,
+     Color = CONFIG.SUCCESS_COLOR
+ })
