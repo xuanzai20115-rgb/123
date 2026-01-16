@@ -1,0 +1,183 @@
+local success, WindUI = pcall(function()
+     return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
+ end)
+ -- 核心UI加载容错：避免加载失败导致脚本崩溃
+ if not success then
+     warn("WindUI加载失败，请检查网络连接或链接有效性")
+     game.StarterGui:SetCore("SendNotification", {
+         Title = "加载错误",
+         Text = "无法加载核心UI组件，脚本终止运行",
+         Duration = 5
+     })
+     return
+ end
+ -- 基础配置（保留原设置，修复格式缩进）
+ WindUI.TransparencyValue = 0.2
+ WindUI:SetTheme("Dark")
+ -- 渐变文本函数（修复潜在除数为0问题）
+ local function gradient(text, startColor, endColor)
+     if not text or #text == 0 then return "" end -- 空文本防护
+     local result = ""
+     for i = 1, #text do
+         local t = (i - 1) / math.max(#text - 1, 1) -- 避免除数为0
+         local r = math.floor((startColor.R + (endColor.R - startColor.R) * t) * 255)
+         local g = math.floor((startColor.G + (endColor.G - startColor.G) * t) * 255)
+         local b = math.floor((startColor.B + (endColor.B - startColor.B) * t) * 255)
+         -- 颜色值范围限制（防止异常颜色）
+         r = math.clamp(r, 0, 255)
+         g = math.clamp(g, 0, 255)
+         b = math.clamp(b, 0, 255)
+         result = result .. string.format('<font color="rgb(%d,%d,%d)">%s</font>', r, g, b, text:sub(i, i))
+     end
+     return result
+ end
+ -- 创建主窗口（保留原配置，规范格式）
+ local Window = WindUI:CreateWindow({
+     Title = "袁某人脚本",
+     Icon = "palette",
+     Author = "本脚本由袁某人独立完成",
+     Folder = "文件夹路径",
+     Size = UDim2.fromOffset(700, 500),
+     Theme = "Dark",
+     User = {
+         Enabled = true,
+         Callback = function()
+             WindUI:Notify({Title = "配置触发", Content = "用户配置回调已执行", Duration = 1.5})
+         end
+     },
+     SideBarWidth = 220,
+     ScrollBarEnabled = true
+ })
+ Window:Tag({
+     Title = "1.0",
+     Color = Color3.fromHex("#306aff")
+ })
+ -- 公告标签页（修复语法错误，补全简介内容）
+ local NoticeTab = Window:Tab({
+     Title = "公告",
+     Icon = "app-window",
+     Locked = false,
+     OnCreate = function()
+         WindUI:Notify({Title = "标签页加载", Content = "公告标签页创建完成", Duration = 1.5})
+     end
+ })
+ -- 修复复制按钮语法错误（移除多余问号，补全逻辑）
+ NoticeTab:Paragraph({
+     Title = "复制",
+     Image = "nil",
+     ImageSize = 20,
+     Color = "Grey",
+     Buttons = {
+         {
+             Title = "复制",
+             Icon = "copy",
+             Variant = "Tertiary",
+             Callback = function()
+                 setclipboard("乐子")
+                 WindUI:Notify({
+                     Title = "已复制！",
+                     Content = "已复制到剪贴板",
+                     Duration = 2
+                 })
+             end
+         }
+     }
+ })
+ -- 补全简介内容Section（添加实际文本，避免空组件）
+ NoticeTab:Section({
+     Title = "简介内容",
+     Text = "欢迎使用袁某人脚本 v1.0，包含通缉、自动刷钱等功能，使用前请遵守游戏规则，避免账号风险",
+     TextXAlignment = "Left",
+     TextSize = 17
+ })
+ -- 通缉标签页（修复按钮命名冲突，补全KENNY脚本容错）
+ local WantedTab = Window:Tab({
+     Title = "通缉",
+     Icon = "bird",
+     Locked = false,
+ })
+ -- TINEv1.5 按钮（保留原容错逻辑，规范变量名）
+ WantedTab:Button({
+     Title = "TINEv1.5",
+     Locked = false,
+     Callback = function()
+         local success, err = pcall(function()
+             loadstring(game:HttpGet("https://pandadevelopment.net/virtual/file/145a7a000c1ad031"))()
+--TnineHub通缉[限定版本]V2.5
+             loadstring(scriptCode)()
+         end)
+         if success then
+             WindUI:Notify({Title = "执行成功", Content = "TINEv1.5脚本已运行", Duration = 2})
+         else
+             WindUI:Notify({Title = "执行失败", Content = "脚本加载/运行出错", Duration = 2})
+             warn("TINEv2.5错误信息：", err)
+         end
+     end
+ })
+ -- 自动刷钱按钮（保留原逻辑，规范格式）
+ WantedTab:Button({
+     Title = "自动刷钱",
+     Locked = false,
+     Callback = function()
+         local success, err = pcall(function()
+             local scriptCode = game:HttpGet('https://pastefy.app/LxpLejsi/raw')
+             loadstring(scriptCode)()
+         end)
+         if success then
+             WindUI:Notify({Title = "执行成功", Content = "自动刷钱脚本已启动", Duration = 2})
+         else
+             WindUI:Notify({Title = "执行失败", Content = "刷钱脚本加载失败", Duration = 2})
+             warn("刷钱脚本错误：", err)
+         end
+     end
+ })
+ -- KENNY 按钮（添加容错机制，修复语法缩进）
+ WantedTab:Button({
+     Title = "KENNY",
+     Locked = false,
+     Callback = function()
+         local success, err = pcall(function()
+             local scriptCode = game:HttpGet("https://raw.githubusercontent.com/ke9460394-dot/ugik/refs/heads/main/KENNY通缉换服.lua")
+             loadstring(scriptCode)()
+         end)
+         if success then
+             WindUI:Notify({Title = "执行成功", Content = "KENNY通缉换服脚本已运行", Duration = 2})
+         else
+             WindUI:Notify({Title = "执行失败", Content = "KENNY脚本加载/运行出错", Duration = 2})
+             warn("KENNY脚本错误信息：", err)
+         end
+     end
+ })
+ -- 被遗弃标签页（移除XQ，添加XK功能按钮）
+ local AbandonedTab = Window:Tab({
+     Title = "被遗弃",
+     Icon = "trash", -- 更换贴合图标，区分功能
+     Locked = false,
+     OnCreate = function()
+         AbandonedTab:Paragraph({
+             Title = "提示",
+             Text = "此标签页下的功能已废弃，可能存在兼容性问题，使用风险自负！",
+             Color = "Red",
+             TextSize = 16
+         })
+     end
+ })
+ -- XK功能按钮移入「被遗弃」标签页，添加容错机制
+ AbandonedTab:Button({
+     Title = "XK",
+     Locked = false,
+     Callback = function()
+         local success, err = pcall(function()
+             local scriptCode = game:HttpGet("https://raw.githubusercontent.com/DevSloPo/Main/refs/heads/main/Game/Forsaken")
+             loadstring(scriptCode)()
+         end)
+         if success then
+             WindUI:Notify({Title = "执行成功", Content = "XK废弃功能已运行（风险自负）", Duration = 2})
+         else
+             WindUI:Notify({Title = "执行失败", Content = "XK功能加载/运行出错", Duration = 2})
+             warn("XK脚本错误信息：", err)
+         end
+     end
+ })
+ -- 脚本启动成功提示
+ WindUI:Notify({Title = "启动成功", Content = "袁某人脚本已全部加载完成", Duration = 2})
