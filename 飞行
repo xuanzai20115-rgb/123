@@ -1,0 +1,601 @@
+-- 自由飞行控制器 | 手机 / PC
+-- 放入 StarterPlayer > StarterPlayerScripts，作为 LocalScript
+-- 使用游戏自带移动摇杆控制方向；抬高/压低镜头可控制爬升/下降。
+
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+local flying = false
+local speed = 80
+local renderConnection
+local attachment, linearVelocity, alignOrientation
+local humanoid
+local previousPlatformStand, previousAutoRotate
+local savedCollision = {}
+local collisionAddedConnection
+local lastSafeCFrame
+local flightTrail, trailAttachments = nil, {}
+local flightMotors, originalMotorTransforms = {}, {}
+local minimized = false
+local dragging = false
+local dragInput, dragStart, dragOrigin
+
+local function create(className, properties, parent)
+    local object = Instance.new(className)
+    for key, value in pairs(properties or {}) do
+        object[key] = value
+    end
+    object.Parent = parent
+    return object
+end
+
+local gui = create("ScreenGui", {
+    Name = "YMRFlightUI",
+    ResetOnSpawn = false,
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+}, playerGui)
+
+-- 小面板默认放在屏幕右侧偏上，减少遮挡
+local panel = create("Frame", {
+    Name = "Panel",
+    AnchorPoint = Vector2.new(1, 0.5),
+    Position = UDim2.new(1, -14, 0.58, 0),
+    Size = UDim2.fromOffset(244, 158),
+    BackgroundColor3 = Color3.fromRGB(20, 27, 43),
+    BackgroundTransparency = 0.08,
+    BorderSizePixel = 0,
+}, gui)
+create("UICorner", {CornerRadius = UDim.new(0, 17)}, panel)
+create("UIStroke", {
+    Color = Color3.fromRGB(105, 166, 255),
+    Transparency = 0.42,
+    Thickness = 1.2,
+}, panel)
+create("UIGradient", {
+    Rotation = 35,
+    Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(39, 57, 86)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(15, 20, 33)),
+    }),
+}, panel)
+
+local header = create("Frame", {
+    BackgroundTransparency = 1,
+    Position = UDim2.fromOffset(12, 8),
+    Size = UDim2.new(1, -24, 0, 30),
+}, panel)
+
+local title = create("TextLabel", {
+    BackgroundTransparency = 1,
+    Size = UDim2.new(1, -38, 1, 0),
+    Font = Enum.Font.GothamBold,
+    Text = "YMR飞行",
+    TextColor3 = Color3.fromRGB(242, 247, 255),
+    TextSize = 16,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, header)
+
+local minimizeButton = create("TextButton", {
+    AnchorPoint = Vector2.new(1, 0),
+    Position = UDim2.new(1, 0, 0, 0),
+    Size = UDim2.fromOffset(28, 26),
+    BackgroundColor3 = Color3.fromRGB(65, 87, 124),
+    BackgroundTransparency = 0.12,
+    BorderSizePixel = 0,
+    Font = Enum.Font.GothamBold,
+    Text = "−",
+    TextColor3 = Color3.new(1, 1, 1),
+    TextSize = 19,
+    AutoButtonColor = false,
+}, header)
+create("UICorner", {CornerRadius = UDim.new(0, 9)}, minimizeButton)
+
+local status = create("TextLabel", {
+    Position = UDim2.fromOffset(12, 45),
+    Size = UDim2.new(1, -24, 0, 23),
+    BackgroundColor3 = Color3.fromRGB(43, 57, 79),
+    BackgroundTransparency = 0.15,
+    BorderSizePixel = 0,
+    Font = Enum.Font.GothamMedium,
+    Text = "●  飞行已关闭",
+    TextColor3 = Color3.fromRGB(196, 210, 232),
+    TextSize = 11,
+}, panel)
+create("UICorner", {CornerRadius = UDim.new(0, 8)}, status)
+
+local toggle = create("TextButton", {
+    Position = UDim2.fromOffset(12, 77),
+    Size = UDim2.new(1, -24, 0, 34),
+    BackgroundColor3 = Color3.fromRGB(48, 126, 218),
+    BorderSizePixel = 0,
+    Font = Enum.Font.GothamBold,
+    Text = "开启飞行",
+    TextColor3 = Color3.new(1, 1, 1),
+    TextSize = 13,
+    AutoButtonColor = false,
+}, panel)
+create("UICorner", {CornerRadius = UDim.new(0, 10)}, toggle)
+
+local speedLabel = create("TextLabel", {
+    Position = UDim2.fromOffset(13, 119),
+    Size = UDim2.fromOffset(100, 20),
+    BackgroundTransparency = 1,
+    Font = Enum.Font.GothamMedium,
+    Text = "速度  80",
+    TextColor3 = Color3.fromRGB(220, 231, 249),
+    TextSize = 11,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, panel)
+
+local speedValue = create("TextLabel", {
+    AnchorPoint = Vector2.new(1, 0),
+    Position = UDim2.new(1, -13, 0, 119),
+    Size = UDim2.fromOffset(38, 20),
+    BackgroundTransparency = 1,
+    Font = Enum.Font.Gotham,
+    Text = "20–200",
+    TextColor3 = Color3.fromRGB(145, 174, 218),
+    TextSize = 9,
+    TextXAlignment = Enum.TextXAlignment.Right,
+}, panel)
+
+local slider = create("Frame", {
+    Position = UDim2.fromOffset(13, 143),
+    Size = UDim2.new(1, -26, 0, 5),
+    BackgroundColor3 = Color3.fromRGB(67, 82, 108),
+    BorderSizePixel = 0,
+}, panel)
+create("UICorner", {CornerRadius = UDim.new(1, 0)}, slider)
+
+local fill = create("Frame", {
+    Size = UDim2.new((speed - 20) / 180, 0, 1, 0),
+    BackgroundColor3 = Color3.fromRGB(102, 178, 255),
+    BorderSizePixel = 0,
+}, slider)
+create("UICorner", {CornerRadius = UDim.new(1, 0)}, fill)
+
+local knob = create("Frame", {
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.new((speed - 20) / 180, 0, 0.5, 0),
+    Size = UDim2.fromOffset(13, 13),
+    BackgroundColor3 = Color3.fromRGB(240, 247, 255),
+    BorderSizePixel = 0,
+}, slider)
+create("UICorner", {CornerRadius = UDim.new(1, 0)}, knob)
+
+local sliderHitbox = create("TextButton", {
+    Position = UDim2.new(0, -4, 0.5, -13),
+    Size = UDim2.new(1, 8, 0, 26),
+    BackgroundTransparency = 1,
+    Text = "",
+    AutoButtonColor = false,
+}, slider)
+
+local function updateSlider(x)
+    local width = math.max(slider.AbsoluteSize.X, 1)
+    local ratio = math.clamp((x - slider.AbsolutePosition.X) / width, 0, 1)
+    speed = math.floor(20 + ratio * 180 + 0.5)
+    fill.Size = UDim2.new(ratio, 0, 1, 0)
+    knob.Position = UDim2.new(ratio, 0, 0.5, 0)
+    speedLabel.Text = "速度  " .. speed
+end
+
+local sliding = false
+sliderHitbox.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        sliding = true
+        updateSlider(input.Position.X)
+    end
+end)
+
+UIS.InputChanged:Connect(function(input)
+    if sliding and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
+        updateSlider(input.Position.X)
+    end
+end)
+
+UIS.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        sliding = false
+        dragging = false
+    end
+end)
+
+-- 最小化后显示可拖动悬浮球
+local orb = create("TextButton", {
+    Name = "FlightOrb",
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.new(1, -42, 0.58, 0),
+    Size = UDim2.fromOffset(0, 0),
+    BackgroundColor3 = Color3.fromRGB(43, 119, 211),
+    BackgroundTransparency = 0.04,
+    BorderSizePixel = 0,
+    Text = "✦",
+    TextColor3 = Color3.new(1, 1, 1),
+    TextSize = 24,
+    Font = Enum.Font.GothamBold,
+    AutoButtonColor = false,
+    Visible = false,
+}, gui)
+create("UICorner", {CornerRadius = UDim.new(1, 0)}, orb)
+create("UIStroke", {Color = Color3.fromRGB(166, 207, 255), Transparency = 0.22, Thickness = 1.5}, orb)
+
+local function tween(object, duration, properties)
+    local animation = TweenService:Create(
+        object,
+        TweenInfo.new(duration, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+        properties
+    )
+    animation:Play()
+    return animation
+end
+
+local function minimizePanel()
+    if minimized then return end
+    minimized = true
+    orb.Position = UDim2.new(
+        panel.Position.X.Scale,
+        panel.Position.X.Offset - 0,
+        panel.Position.Y.Scale,
+        panel.Position.Y.Offset + 0
+    )
+    orb.Visible = true
+    orb.Size = UDim2.fromOffset(0, 0)
+    tween(panel, 0.2, {
+        Size = UDim2.fromOffset(0, 0),
+        BackgroundTransparency = 1,
+    }).Completed:Connect(function()
+        panel.Visible = false
+    end)
+    tween(orb, 0.28, {Size = UDim2.fromOffset(52, 52)})
+end
+
+local function restorePanel()
+    if not minimized then return end
+    minimized = false
+    panel.Position = UDim2.new(
+        orb.Position.X.Scale,
+        orb.Position.X.Offset,
+        orb.Position.Y.Scale,
+        orb.Position.Y.Offset
+    )
+    panel.AnchorPoint = Vector2.new(0.5, 0.5)
+    panel.Size = UDim2.fromOffset(0, 0)
+    panel.BackgroundTransparency = 1
+    panel.Visible = true
+    tween(orb, 0.16, {Size = UDim2.fromOffset(0, 0)}).Completed:Connect(function()
+        orb.Visible = false
+    end)
+    tween(panel, 0.25, {
+        Size = UDim2.fromOffset(244, 158),
+        BackgroundTransparency = 0.08,
+    })
+end
+
+minimizeButton.Activated:Connect(minimizePanel)
+orb.Activated:Connect(restorePanel)
+
+-- 面板顶部可拖动
+header.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragInput = input
+        dragStart = input.Position
+        dragOrigin = panel.Position
+    end
+end)
+
+-- 悬浮球可拖动；轻点则展开
+local orbPressPosition
+local orbMoved = false
+orb.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragInput = input
+        dragStart = input.Position
+        dragOrigin = orb.Position
+        orbPressPosition = input.Position
+        orbMoved = false
+    end
+end)
+
+UIS.InputChanged:Connect(function(input)
+    if not dragging then return end
+    if input == dragInput or input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        if minimized then
+            if delta.Magnitude > 7 then orbMoved = true end
+            orb.Position = UDim2.new(
+                dragOrigin.X.Scale, dragOrigin.X.Offset + delta.X,
+                dragOrigin.Y.Scale, dragOrigin.Y.Offset + delta.Y
+            )
+        else
+            panel.Position = UDim2.new(
+                dragOrigin.X.Scale, dragOrigin.X.Offset + delta.X,
+                dragOrigin.Y.Scale, dragOrigin.Y.Offset + delta.Y
+            )
+        end
+    end
+end)
+
+orb.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        if not orbMoved then
+            restorePanel()
+        end
+        dragging = false
+    end
+end)
+
+local function clearFlightEffects()
+    if flightTrail then
+        flightTrail:Destroy()
+        flightTrail = nil
+    end
+    for _, item in ipairs(trailAttachments) do
+        if item and item.Parent then item:Destroy() end
+    end
+    table.clear(trailAttachments)
+
+    for motor, original in pairs(originalMotorTransforms) do
+        if motor and motor.Parent then
+            motor.Transform = original
+        end
+    end
+    table.clear(originalMotorTransforms)
+    table.clear(flightMotors)
+end
+
+local function createFlightEffects(character, root)
+    clearFlightEffects()
+
+    -- 两条蓝紫渐变光带，从角色背后延伸。
+    local upper = Instance.new("Attachment")
+    upper.Name = "YMR_Trail_Upper"
+    upper.Position = Vector3.new(-0.42, 0.55, 0.72)
+    upper.Parent = root
+
+    local lower = Instance.new("Attachment")
+    lower.Name = "YMR_Trail_Lower"
+    lower.Position = Vector3.new(-0.42, -0.55, 0.72)
+    lower.Parent = root
+
+    table.insert(trailAttachments, upper)
+    table.insert(trailAttachments, lower)
+
+    flightTrail = Instance.new("Trail")
+    flightTrail.Name = "YMR_AuroraTrail"
+    flightTrail.Attachment0 = upper
+    flightTrail.Attachment1 = lower
+    flightTrail.FaceCamera = true
+    flightTrail.Lifetime = 0.48
+    flightTrail.MinLength = 0.08
+    flightTrail.LightEmission = 0.85
+    flightTrail.LightInfluence = 0
+    flightTrail.WidthScale = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.8),
+        NumberSequenceKeypoint.new(0.45, 0.48),
+        NumberSequenceKeypoint.new(1, 0),
+    })
+    flightTrail.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.12),
+        NumberSequenceKeypoint.new(1, 1),
+    })
+    flightTrail.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(93, 222, 255)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(105, 133, 255)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(202, 112, 255)),
+    })
+    flightTrail.Parent = root
+    flightTrail.Enabled = true
+
+    -- 记录关节原始姿势，飞行时做轻微俯冲姿态，停止后还原。
+    local wanted = {
+        RightShoulder = true, LeftShoulder = true,
+        RightHip = true, LeftHip = true,
+        ["Right Shoulder"] = true, ["Left Shoulder"] = true,
+        ["Right Hip"] = true, ["Left Hip"] = true,
+        Waist = true,
+    }
+    for _, descendant in ipairs(character:GetDescendants()) do
+        if descendant:IsA("Motor6D") and wanted[descendant.Name] then
+            originalMotorTransforms[descendant] = descendant.Transform
+            table.insert(flightMotors, descendant)
+        end
+    end
+end
+
+local function updateFlightPose(elapsed)
+    local sway = math.sin(elapsed * 3.2) * 0.045
+    for _, motor in ipairs(flightMotors) do
+        if motor and motor.Parent then
+            local name = motor.Name
+            if name == "RightShoulder" or name == "Right Shoulder" then
+                motor.Transform = CFrame.Angles(math.rad(-58), 0, math.rad(12) + sway)
+            elseif name == "LeftShoulder" or name == "Left Shoulder" then
+                motor.Transform = CFrame.Angles(math.rad(-58), 0, math.rad(-12) - sway)
+            elseif name == "RightHip" or name == "Right Hip" then
+                motor.Transform = CFrame.Angles(math.rad(13), 0, math.rad(5))
+            elseif name == "LeftHip" or name == "Left Hip" then
+                motor.Transform = CFrame.Angles(math.rad(13), 0, math.rad(-5))
+            elseif name == "Waist" then
+                motor.Transform = CFrame.Angles(math.rad(-9), 0, sway)
+            end
+        end
+    end
+end
+
+local function enableLocalNoclip(character)
+    table.clear(savedCollision)
+
+    local function disableCollision(part)
+        if part:IsA("BasePart") then
+            if savedCollision[part] == nil then
+                savedCollision[part] = part.CanCollide
+            end
+            part.CanCollide = false
+        end
+    end
+
+    for _, part in ipairs(character:GetDescendants()) do
+        disableCollision(part)
+    end
+
+    if collisionAddedConnection then
+        collisionAddedConnection:Disconnect()
+    end
+    collisionAddedConnection = character.DescendantAdded:Connect(function(part)
+        if flying then
+            disableCollision(part)
+        end
+    end)
+end
+
+local function restoreLocalCollision()
+    if collisionAddedConnection then
+        collisionAddedConnection:Disconnect()
+        collisionAddedConnection = nil
+    end
+
+    for part, originalValue in pairs(savedCollision) do
+        if part and part.Parent then
+            part.CanCollide = originalValue
+        end
+    end
+    table.clear(savedCollision)
+end
+
+local function protectFromFalling(root)
+    if not root or not root.Parent then return end
+
+    local rescueY = workspace.FallenPartsDestroyHeight + 100
+    if root.Position.Y > rescueY then
+        lastSafeCFrame = root.CFrame
+    elseif lastSafeCFrame then
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+        root.CFrame = lastSafeCFrame + Vector3.new(0, 12, 0)
+    end
+end
+
+local function stopFlight()
+    flying = false
+    if renderConnection then
+        renderConnection:Disconnect()
+        renderConnection = nil
+    end
+    if linearVelocity then linearVelocity:Destroy(); linearVelocity = nil end
+    if alignOrientation then alignOrientation:Destroy(); alignOrientation = nil end
+    if attachment then attachment:Destroy(); attachment = nil end
+
+    if humanoid and humanoid.Parent then
+        humanoid.PlatformStand = previousPlatformStand or false
+        humanoid.AutoRotate = previousAutoRotate ~= nil and previousAutoRotate or true
+    end
+    humanoid = nil
+    restoreLocalCollision()
+    lastSafeCFrame = nil
+    clearFlightEffects()
+
+    status.Text = "●  飞行已关闭"
+    status.TextColor3 = Color3.fromRGB(196, 210, 232)
+    toggle.Text = "开启飞行"
+    toggle.BackgroundColor3 = Color3.fromRGB(48, 126, 218)
+end
+
+local function startFlight()
+    local character = player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    local newHumanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not root or not newHumanoid then
+        status.Text = "●  角色尚未准备好"
+        return
+    end
+
+    stopFlight()
+    humanoid = newHumanoid
+    lastSafeCFrame = root.CFrame
+    enableLocalNoclip(character)
+    previousPlatformStand = humanoid.PlatformStand
+    previousAutoRotate = humanoid.AutoRotate
+
+    -- 保留 Humanoid 默认控制器读取摇杆输入，不再提供自定义方向按钮
+    humanoid.PlatformStand = false
+    humanoid.AutoRotate = false
+
+    attachment = Instance.new("Attachment")
+    attachment.Parent = root
+
+    linearVelocity = Instance.new("LinearVelocity")
+    linearVelocity.Attachment0 = attachment
+    linearVelocity.RelativeTo = Enum.ActuatorRelativeTo.World
+    linearVelocity.MaxForce = math.huge
+    linearVelocity.VectorVelocity = Vector3.zero
+    linearVelocity.Parent = root
+
+    alignOrientation = Instance.new("AlignOrientation")
+    alignOrientation.Attachment0 = attachment
+    alignOrientation.Mode = Enum.OrientationAlignmentMode.OneAttachment
+    alignOrientation.MaxTorque = math.huge
+    alignOrientation.Responsiveness = 18
+    alignOrientation.Parent = root
+
+    createFlightEffects(character, root)
+    local flightStartedAt = os.clock()
+
+    flying = true
+    status.Text = "●  飞行运行中"
+    status.TextColor3 = Color3.fromRGB(116, 235, 178)
+    toggle.Text = "关闭飞行"
+    toggle.BackgroundColor3 = Color3.fromRGB(183, 70, 88)
+
+    renderConnection = RunService.RenderStepped:Connect(function()
+        if not flying or not root.Parent or not humanoid or not humanoid.Parent then
+            stopFlight()
+            return
+        end
+
+        updateFlightPose(os.clock() - flightStartedAt)
+        protectFromFalling(root)
+
+        local camera = workspace.CurrentCamera
+        local cameraLook = camera.CFrame.LookVector
+        local joystickDirection = humanoid.MoveDirection
+
+        -- MoveDirection 来自 Roblox 默认摇杆 / 键盘，镜头俯仰角控制升降
+        local horizontal = Vector3.new(joystickDirection.X, 0, joystickDirection.Z)
+        local vertical = 0
+        if horizontal.Magnitude > 0.01 then
+            vertical = cameraLook.Y * horizontal.Magnitude
+        end
+
+        local movement = horizontal + Vector3.new(0, vertical, 0)
+        if movement.Magnitude > 1 then movement = movement.Unit end
+        linearVelocity.VectorVelocity = movement * speed
+
+        if cameraLook.Magnitude > 0 then
+            alignOrientation.CFrame = CFrame.lookAt(root.Position, root.Position + cameraLook)
+        end
+    end)
+end
+
+toggle.Activated:Connect(function()
+    if flying then
+        stopFlight()
+    else
+        startFlight()
+    end
+end)
+
+player.CharacterAdded:Connect(function()
+    stopFlight()
+end)
+
+gui.Destroying:Connect(function()
+    stopFlight()
+end)
